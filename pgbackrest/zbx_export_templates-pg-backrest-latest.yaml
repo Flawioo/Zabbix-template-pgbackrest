@@ -1,0 +1,408 @@
+zabbix_export:
+  version: '6.4'
+  template_groups:
+    -
+      uuid: 7df96b18c230490a9a0a9e2307226338
+      name: Templates
+  templates:
+    -
+      uuid: 96e0e60553c84187aef44e982ee51789
+      template: 'Template - Pgbackrest'
+      name: 'Template - Pgbackrest'
+      description: |
+        Monitoring of pgbackrest backups.
+        Data is sent using zabbix_sender and preformatted using jq
+        crontab of the pgbackrest user on the repo host[s]:
+        # crontab of pgbacrest user in pgbackrest server (who is storing the backup files)
+        15 *  * * * $HOME/bin/zabbix_pgbackrest.sh >>/var/log/pgbackrest/zabbix_pgbackrest.sh.log 2>&1
+        
+        The items wal,(min|max) items are only enabled for the full backups.
+      groups:
+        -
+          name: Templates
+      items:
+        -
+          uuid: e4da9670130e46999487f4fdba9cf35b
+          name: pgbackrest.data
+          type: TRAP
+          key: pgbackrest.data
+          delay: '0'
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+          description: 'The data where the items depend on'
+          tags:
+            -
+              tag: Application
+              value: backup
+        -
+          uuid: ed027a0b66ff4560860cd4533b398894
+          name: pgbackrest.json
+          type: TRAP
+          key: pgbackrest.json
+          delay: '0'
+          history: 1d
+          trends: '0'
+          value_type: TEXT
+          description: |
+            Only for lld, contains list of names and type
+            The lld rule depends on this
+          tags:
+            -
+              tag: Application
+              value: backup
+        -
+          uuid: 3033820bf3614fd88d7f4a9223abdbdd
+          name: 'pgbackrest[count]'
+          type: DEPENDENT
+          key: 'pgbackrest[count]'
+          delay: '0'
+          history: 8d
+          description: '# of  backups by pgbackrest on this host (dbx, full + incr -> 2)'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - $.length()
+            -
+              type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          master_item:
+            key: pgbackrest.json
+          tags:
+            -
+              tag: Application
+              value: backup
+      discovery_rules:
+        -
+          uuid: 1b775b3c7e3144749e152800abf8075e
+          name: pgbackrest.lld
+          type: DEPENDENT
+          key: pgbackrest.lld
+          delay: '0'
+          item_prototypes:
+            -
+              uuid: 4f28ae4a532343a3b143d9fffd672e02
+              name: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},age]'
+              type: TRAP
+              key: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},age]'
+              delay: '0'
+              history: 8d
+              units: s
+              description: 'age of last (#TYPE} backup in seconds'
+              tags:
+                -
+                  tag: Application
+                  value: backup
+              trigger_prototypes:
+                -
+                  uuid: ca970b1014d64068a623eeb333669246
+                  expression: 'last(/Template - Pgbackrest/pgbackrest[{#TENANT},{#NAME},{#TYPE},age]) > {$MAX_BKUP_AGE:"{#TYPE}"}'
+                  name: 'last {#TYPE} backup of {#TENANT}, {#NAME} older than {$MAX_BKUP_AGE:"{#TYPE}"}'
+                  priority: WARNING
+                  tags:
+                    -
+                      tag: backup
+                      value: '{#NAME}-{#TYPE}'
+            -
+              uuid: ee20e85403704e77acc56d2bef6c2004
+              name: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},db,delta]'
+              type: TRAP
+              key: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},db,delta]'
+              delay: '0'
+              history: 8d
+              units: B
+              preprocessing:
+                -
+                  type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1d
+              tags:
+                -
+                  tag: Application
+                  value: backup
+            -
+              uuid: a1e380b0c71346dd81db756bb8ddb5ad
+              name: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},db,size]'
+              type: TRAP
+              key: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},db,size]'
+              delay: '0'
+              history: 8d
+              units: B
+              description: 'dbsize as it runs'
+              preprocessing:
+                -
+                  type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1d
+              tags:
+                -
+                  tag: Application
+                  value: backup
+            -
+              uuid: 3c96d1a2fdd447f7bd59ab3ce6ab799b
+              name: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},repo,delta]'
+              type: TRAP
+              key: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},repo,delta]'
+              delay: '0'
+              history: 8d
+              units: B
+              preprocessing:
+                -
+                  type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1d
+              tags:
+                -
+                  tag: Application
+                  value: backup
+            -
+              uuid: 976a833effb94001bef1616e94f8ca89
+              name: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},repo,size]'
+              type: TRAP
+              key: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},repo,size]'
+              delay: '0'
+              history: 8d
+              units: B
+              description: 'size of db in the repository'
+              preprocessing:
+                -
+                  type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1d
+              tags:
+                -
+                  tag: Application
+                  value: backup
+            -
+              uuid: b5aa24b3e5fe4efc8488babf556d019c
+              name: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},start]'
+              type: TRAP
+              key: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},start]'
+              delay: '0'
+              history: 8d
+              units: unixtime
+              description: 'The time this backup started'
+              preprocessing:
+                -
+                  type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1d
+              tags:
+                -
+                  tag: Application
+                  value: backup
+            -
+              uuid: 6ff83811a6974114b211a8e9154ca7a5
+              name: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},status]'
+              type: TRAP
+              key: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},status]'
+              delay: '0'
+              history: 8d
+              valuemap:
+                name: pgbackrest_status
+              preprocessing:
+                -
+                  type: STR_REPLACE
+                  parameters:
+                    - 'false'
+                    - '0'
+                -
+                  type: STR_REPLACE
+                  parameters:
+                    - 'true'
+                    - '1'
+                -
+                  type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1d
+              tags:
+                -
+                  tag: Application
+                  value: backup
+              trigger_prototypes:
+                -
+                  uuid: d0d13406f9e748d7939ab39c7aa35655
+                  expression: 'last(/Template - Pgbackrest/pgbackrest[{#TENANT},{#NAME},{#TYPE},status])<>0'
+                  name: 'backup failed {#TENANT}, {#NAME}-{#TYPE}'
+                  priority: WARNING
+                  tags:
+                    -
+                      tag: backup
+                      value: '{#TENANT}- {#NAME}-{#TYPE}'
+            -
+              uuid: b51df0c023e540f4ba52f75f57df21d5
+              name: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},stop]'
+              type: TRAP
+              key: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},stop]'
+              delay: '0'
+              history: 8d
+              units: unixtime
+              description: 'The time this backup ended'
+              preprocessing:
+                -
+                  type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1d
+              tags:
+                -
+                  tag: Application
+                  value: backup
+            -
+              uuid: ce9d17ac3c8047bca299e34d045b5aa6
+              name: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},version]'
+              type: TRAP
+              key: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},version]'
+              delay: '0'
+              history: 8d
+              trends: '0'
+              value_type: CHAR
+              description: 'version of pgbackrest used for this backup'
+              preprocessing:
+                -
+                  type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1d
+              tags:
+                -
+                  tag: Application
+                  value: backup
+            -
+              uuid: 60af7e814ecb4c7cb423ea768cac4204
+              name: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},wal,max]'
+              type: TRAP
+              key: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},wal,max]'
+              delay: '0'
+              history: 15d
+              trends: '0'
+              value_type: CHAR
+              description: 'Most recent archived log in repo available, only enabled for full (discovery override)'
+              preprocessing:
+                -
+                  type: DISCARD_UNCHANGED
+                  parameters:
+                    - ''
+              tags:
+                -
+                  tag: Application
+                  value: backup
+              trigger_prototypes:
+                -
+                  uuid: b4c7a228a14c468190b84904ce16939e
+                  expression: 'nodata(/Template - Pgbackrest/pgbackrest[{#TENANT},{#NAME},{#TYPE},wal,max],{$ARCHIVER_LATE})=1'
+                  name: 'no archives received for {#TENANT}, {#NAME} - {#TYPE}'
+                  priority: WARNING
+                  description: |
+                    archives are for all backuptypes so check only full,arl,max
+                    the arl items are disabled and only enabled for full,arl,(min|max)
+                  tags:
+                    -
+                      tag: archiving
+                    -
+                      tag: backup
+                      value: '{#NAME}-{#TYPE}'
+            -
+              uuid: 0fec4bc5f20146a2a1421ca5dabc8de0
+              name: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},wal,min]'
+              type: TRAP
+              key: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},wal,min]'
+              delay: '0'
+              history: 15d
+              trends: '0'
+              value_type: CHAR
+              description: 'Oldest archived log in repo available, only enabled for full (discovery override)'
+              preprocessing:
+                -
+                  type: DISCARD_UNCHANGED
+                  parameters:
+                    - ''
+              tags:
+                -
+                  tag: Application
+                  value: backup
+            -
+              uuid: e8869dd8f1c6429fb760fc3b8ec76ae3
+              name: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},wspeed]'
+              type: CALCULATED
+              key: 'pgbackrest[{#TENANT},{#NAME},{#TYPE},wspeed]'
+              delay: 1h
+              history: 8d
+              value_type: FLOAT
+              units: Bps
+              params: 'last(//pgbackrest[{#TENANT},{#NAME},{#TYPE},repo,delta]) / (last(//pgbackrest[{#TENANT},{#NAME},{#TYPE},stop])-last(//pgbackrest[{#TENANT},{#NAME},{#TYPE},start]))'
+              description: 'write speed for the backup piece'
+              preprocessing:
+                -
+                  type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1d
+              tags:
+                -
+                  tag: Application
+                  value: backup
+          master_item:
+            key: pgbackrest.json
+          lld_macro_paths:
+            -
+              lld_macro: '{#NAME}'
+              path: $.name
+            -
+              lld_macro: '{#TENANT}'
+              path: $.tenant
+            -
+              lld_macro: '{#TYPE}'
+              path: $.type
+          overrides:
+            -
+              name: 'arl tracking only for full'
+              step: '1'
+              filter:
+                conditions:
+                  -
+                    macro: '{#TYPE}'
+                    value: full
+                    formulaid: A
+              operations:
+                -
+                  operationobject: ITEM_PROTOTYPE
+                  operator: LIKE
+                  value: ',full,wal,'
+                  status: ENABLED
+                -
+                  operationobject: TRIGGER_PROTOTYPE
+                  operator: LIKE
+                  value: ',wal,'
+                  status: ENABLED
+      tags:
+        -
+          tag: app
+          value: pgbackrest
+      macros:
+        -
+          macro: '{$ARCHIVER_LATE}'
+          value: 1d
+          description: 'warn if archives are not received after this'
+        -
+          macro: '{$MAX_BKUP_AGE}'
+          value: 8d
+          description: '7d but prefer not to trigger during a large backup'
+        -
+          macro: '{$MAX_BKUP_AGE:full}'
+          value: 25h
+          description: '1d but prefer not to trigger during a large backup'
+        -
+          macro: '{$MAX_BKUP_AGE:incr}'
+          value: 50h
+          description: '1d but prefer not to trigger during a large backup'
+      valuemaps:
+        -
+          uuid: 485b70ecd5684075970fd462e31e330d
+          name: pgbackrest_status
+          mappings:
+            -
+              value: '0'
+              newvalue: OK
+            -
+              value: '1'
+              newvalue: ERROR
